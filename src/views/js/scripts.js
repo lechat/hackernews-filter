@@ -160,14 +160,14 @@ function showWhy(s_descr, s_url, icon) {
   });
 }
 
-function editFilter() {
+function editFilter(url) {
   $.ajax({
     url: "/check_login_status",
     type: "GET",
     success: function(response) {
       console.log(response.logged_in);
       if (response.logged_in) {
-        editCrap();
+        editCrap(url);
       } else {
         $("#loginModal").modal("show");
       }

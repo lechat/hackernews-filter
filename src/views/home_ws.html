@@ -205,7 +205,7 @@
                 <td class="title">
                     <a href="<%= story.link %>" class="storylink" target="_blank"><%= story.title %></a>
                     <span>
-                        (<%= story.host %>)<i id="post-link" onclick="editCrap('<%= story.host %>')" class="fa-solid fa-thumbs-down ps-2 crapicon"></i>
+                        (<%= story.host %>)<i id="post-link" onclick="editFilter('<%= story.host %>')" title="Add to filter" class="fa-solid fa-thumbs-down ps-2 crapicon"></i>
                     </span>
                 </td>
                 <td>
@@ -224,7 +224,7 @@
                         <span class="paren">(</span><span><%= story.host %></span><span class="paren">)</span>
                     </span>
                     <span class="sitebit comhead">
-                        <i id="why" class="fa-solid fa-question crapicon" onclick="showWhy('<%= escaped_title %>', '<%= story.host %>', this)"></i>
+                        <i id="why" class="fa-solid fa-question crapicon" onclick="showWhy('<%= escaped_title %>', '<%= story.host %>', this)" title="Show why"></i>
                     </span>
                 </td>
                 </tr>

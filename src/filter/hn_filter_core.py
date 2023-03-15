@@ -24,7 +24,12 @@ def get_stories(page):
     # fetch!
     hn_page = HN_URL + str(page)
     start_time = time.time()
-    r = requests.get(hn_page, verify=True)
+    headers = {
+        'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                       'AppleWebKit/537.36 (KHTML, like Gecko) '
+                       'Chrome/58.0.3029.110 Safari/537.36')
+    }
+    r = requests.get(hn_page, verify=True, headers=headers)
     end_time = time.time()
     log.info(f"{hn_page} response " f"in {end_time - start_time:.2f} seconds")
 

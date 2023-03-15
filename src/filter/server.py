@@ -63,14 +63,9 @@ def filter_file_name():
 
 @app.route("/")
 def index():
+    log.info("Requested /")
     bottle.response.headers["Content-Type"] = "text/html"
-    return bottle.static_file("home_ws.html", root="views")
-
-
-@app.route("/uuidindex")
-def gen_uuid_index():
-    bottle.response.headers["Content-Type"] = "text/html"
-    return bottle.static_file("generate.html", root="views")
+    return bottle.static_file("home_ws.html", root="src/views")
 
 
 @app.route("/ws/<num_pages>")
@@ -115,7 +110,7 @@ def save_filter():
 @app.route("/showwhy", method="POST")
 def show_why():
     descr = bottle.request.forms.get("story")
-    url =  bottle.request.forms.get("url")
+    url = bottle.request.forms.get("url")
 
     why = why_crap(descr, url, filter_file_name())
     bottle.response.headers["Content-Type"] = "application/json"
@@ -124,27 +119,27 @@ def show_why():
 
 @app.route("/css/<filename>")
 def css_files(filename):
-    return bottle.static_file(filename, root="views/css")
+    return bottle.static_file(filename, root="src/views/css")
 
 
 @app.route("/webfonts/<filename>")
 def fonts_files(filename):
-    return bottle.static_file(filename, root="views/fonts")
+    return bottle.static_file(filename, root="src/views/fonts")
 
 
 @app.route("/js/<filename>")
 def js_files(filename):
-    return bottle.static_file(filename, root="views/js")
+    return bottle.static_file(filename, root="src/views/js")
 
 
 @app.route("/img/<filename>")
 def img_files(filename):
-    return bottle.static_file(filename, root="views/img")
+    return bottle.static_file(filename, root="src/views/img")
 
 
 @app.route("/favicon.ico")
 def favicon():
-    return bottle.static_file("y18.ico", root="views/img")
+    return bottle.static_file("y18.ico", root="src/views/img")
 
 
 @app.route("/check_login_status")
@@ -216,6 +211,7 @@ def main(configpath):
 
     log.info(f"Listening on {app_port}. Config path is {configpath}")
 
+    app.debug = True
     server = pywsgi.WSGIServer(
         ("0.0.0.0", int(app_port)),
         app,

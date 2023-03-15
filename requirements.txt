@@ -8,3 +8,4 @@ click
 fastpbkdf2
 passlib
 bottle-login
+redis
