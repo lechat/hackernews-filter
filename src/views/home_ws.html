@@ -12,10 +12,10 @@
     <link href="css/style.css" rel="stylesheet">
 
     <script src="js/jquery-3.6.0-min.js"></script>
+    <script src="js/popper-2.js"></script>
     <script src="js/bootstrap-5.3.0-alpha1-min.js"></script>
     <script src="js/underscore-1.13.1-min.js"></script>
     <script src="js/purl.js"></script>
-    <script src="js/uuid-8.3.2-min.js"></script>
     <script src="js/scripts.js"></script>
 
   </head>
@@ -27,9 +27,15 @@
     <div class="container-fluid">
       <a class="navbar-brand" href="#">
         <img src="/img/y18.ico" style="border:1px white solid;" width="25" heigth="25"/>
-          Filtered HN
+          Filtered
       </a>
       <ul class="navbar-nav me-auto mb-2 mb-lg-0 d-flex align-items-center">
+        <li class="nav-item px-3">
+          <select class="form-select text-bg-warning" id="news-site" onchange="reload()">
+            <option value="hn" selected>Hacker News</option>
+            <option value="lob">Lobsters</option>
+          </select>
+        </li>
         <li class="nav-item px-3 accordion-item">
           <h1 class="accordion-header" id="headerGood">
           <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseGood" aria-expanded="true" aria-controls="collapseGood">
@@ -54,6 +60,24 @@
       </ul>
       <div class="d-flex justify-content-end">
         <form class="container-fluid">
+          <button id="reload-btn" class="btn btn-danger me-2" type="button">Refresh</button>
+        </form>
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0 d-flex align-items-center">
+        <li class="nav-item dropdown">
+          <a id="login-dd" class="btn btn-warning dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+            Not logged in
+          </a>
+          <ul class="dropdown-menu">
+            <li><a id="dd-itm-login" class="dropdown-item" href="#" onclick="doLogin()">Login</a></li>
+            <li><a id="dd-itm-edit" class="dropdown-item" href="#" onclick="editCrap()">Edit filter</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a id="dd-itm-register" class="dropdown-item" href="#" onclick="doRegister()">Register</a></li>
+            <li><a id="dd-itm-logout" class="dropdown-item" href="#" onclick="doLogout()">Logout</a></li>
+          </ul>
+        </li>
+        </ul>
+<!--
+        <form class="container-fluid">
           <button id="login-btn" class="btn btn-danger me-2" type="button" onclick="doLogin()">Login</button>
         </form>
       </div>
@@ -62,11 +86,7 @@
           <button id="edit-btn" class="btn btn-danger me-2" type="button" onclick="editFilter()">Edit filter</button>
         </form>
       </div>
-      <div class="d-flex justify-content-end">
-        <form class="container-fluid">
-          <button id="reload-btn" class="btn btn-danger me-2" type="button">Refresh</button>
-        </form>
-      </div>
+-->
     </div>
   </nav>
 
@@ -126,7 +146,7 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-            <button type="button" class="btn btn-secondary" id="register-btn" onclick="registerForm()">Register</button>
+            <button type="button" class="btn btn-secondary" id="register-btn" onclick="doRegister()">Register</button>
             <button type="button" class="btn btn-primary" id="form-login-btn" onclick="login()">Login</button>
           </div>
         </form>

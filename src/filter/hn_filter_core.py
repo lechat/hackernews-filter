@@ -1,123 +1,40 @@
-import os
+import hashlib
+import json
 import re
 import logging
-import json
-import shutil
-import time
-import requests
-import fileinput
-import traceback
-from urllib.parse import urlparse
-from bs4 import BeautifulSoup
+
+from redis_pool import RedisPool
 
 
 HN_URL = "https://news.ycombinator.com/news?p="
 log = logging.getLogger(__name__)
 
 
-def get_stories(page):
-    """Scrapes hackernews stories and filters the collection."""
+def get_hn_stories(page):
     log.debug("in")
-    story_rows = []
-    stories = []
+    one_page = []
+    log.info(f"Reading page {page} from Redis")
 
-    # fetch!
-    hn_page = HN_URL + str(page)
-    start_time = time.time()
-    headers = {
-        'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                       'AppleWebKit/537.36 (KHTML, like Gecko) '
-                       'Chrome/58.0.3029.110 Safari/537.36')
-    }
-    r = requests.get(hn_page, verify=True, headers=headers)
-    end_time = time.time()
-    log.info(f"{hn_page} response " f"in {end_time - start_time:.2f} seconds")
-
-    souped_body = BeautifulSoup(r.text, "html.parser")
-
-    try:
-        storytable_html = souped_body("table")[2]
-    except IndexError:
-        raise Exception(
-            "Can't find news story table. "
-            "hackernews HTML format probably changed."
-        )
-
-    raw_stories = storytable_html.find_all("tr")
-
-    story_duo = []
-    for tr in raw_stories:
-        # we want strings, not BeautifulSoup tag objects
-        row = tr.encode("utf-8").decode("utf-8")
-        if 'class="spacer"' in row:
-            continue
-
-        if 'class="morespace"' in row:
-            break
-
-        story_duo.append(tr)
-        if len(story_duo) == 2:
-            story_rows.append(story_duo)
-            story_duo = []
-
-    for story_row in story_rows:
-        story = {}
-        link_line = story_row[0]
-        meta_line = story_row[1]
-
-        try:
-            links_in_line = len(link_line.find_all("a"))
-            if links_in_line == 3:
-                story["title"] = link_line.find_all("a")[1].string
-                story["link"] = link_line.find_all("a")[1].get("href")
-            else:
-                # YC announcement
-                story["title"] = link_line.find_all("a")[0].string
-                story["link"] = link_line.find_all("a")[0].get("href")
-                if not story["title"]:
-                    # ASK HN
-                    story["title"] = link_line.find_all("a")[1].string
-                    story["link"] = link_line.find_all("a")[1].get("href")
-
-            all_links = meta_line.find_all("a")
-            if len(all_links) >= 3:
-                story["comments_num"] = all_links[3].string.replace(
-                    "\xa0comments", ""
-                )
-                if story["comments_num"] == "discuss":
-                    story["comments_num"] == "0"
-
-                story[
-                    "comments_link"
-                ] = "https://news.ycombinator.com/" + all_links[3].get("href")
-            else:
-                story["comments_num"] = 0
-                story["comments_link"] = ""
-
-            parsed_link = urlparse(story["link"])
-            story["host"] = "{uri.netloc}".format(uri=parsed_link)
-            if len(meta_line.find_all("span")) >= 2:
-                story["points"] = meta_line.find_all("span")[1].string.replace(
-                    " points", ""
-                )
-            else:
-                story["points"] = "0"
-
-        except IndexError as ie:
-            log.info("IndexError on ", link_line, ie)
-            traceback.log.info_exc()
-            continue
-
-        # Handle relative HN links
-        if not story["link"].startswith("http"):
-            story["link"] = HN_URL + story["link"]
-        stories.append(story)
+    one_page = RedisPool().safe_read("hn_pages")
+    one_page = json.loads(one_page)
 
     log.debug("out")
-    return stories
+    return one_page[page][0]
 
 
-def filter_stories(stories, filter_file):
+def get_lob_stories(page):
+    log.debug("in")
+    one_page = []
+    log.info(f"Reading page {page} from Redis")
+
+    one_page = RedisPool().safe_read("lob_pages")
+    one_page = json.loads(one_page)
+
+    log.debug("out")
+    return one_page[page][0]
+
+
+def filter_stories(stories, filter_lines):
     """
     Filters HN stories.
     """
@@ -125,7 +42,7 @@ def filter_stories(stories, filter_file):
     log.debug("in")
     # suck in filter words
     patterns = set()
-    for line in fileinput.input(filter_file):
+    for line in filter_lines:
         line = line.strip()
         # skip blank lines
         if len(line) < 3:
@@ -160,56 +77,45 @@ def filter_stories(stories, filter_file):
     return result
 
 
-def save_filter_file(filename, filter_lines):
-    with open(filename, "w") as ff:
-        ff.writelines(filter_lines)
+def update_filter(user, filter_lines):
+    with RedisPool() as red:
+        red.hset(user["user_id"], "filter_lines", json.dumps(filter_lines))
 
 
-def get_filter(filename):
-    with fileinput.input(files=filename) as ff:
-        filter = "\n".join(line.strip() for line in ff)
-
-    return filter
-
-
-def find_user(user_id, user_file):
-    with open(user_file, "r") as uf:
-        users = json.load(uf)
-        user = users.get(user_id, {})
+def find_user(user_id):
+    email_hash = hashlib.sha256(user_id.encode('utf-8')).hexdigest()
+    with RedisPool() as red:
+        user = red.hgetall(email_hash)
         if user:
-            user["email"] = user_id
+            user = {
+                k.decode("utf-8"): v.decode("utf-8") for k, v in user.items()
+            }
+            user["filter_lines"] = json.loads(user["filter_lines"])
+            user["user_id"] = email_hash
             return user
 
-        return {}
+    return {}
 
 
-def register_user(user_id, pwd, user_file, filter_file, config_path):
-    user_filter_filename = os.path.join(config_path, f"{user_id}-filter.txt")
+def register_user(user_id, pwd, filter_lines):
+    email_hash = hashlib.sha256(user_id.encode('utf-8')).hexdigest()
 
-    with open(user_file, "r") as uf:
-        users = json.load(uf)
-        users[user_id] = {
+    with RedisPool() as red:
+        red.hmset(email_hash, {
+            "email": user_id,
             "password": pwd,
-            "filter_file": user_filter_filename
-        }
-
-    shutil.copyfile(
-        filter_file,
-        user_filter_filename
-    )
-
-    with open(user_file, "w") as uf:
-        json.dump(users, uf)
+            "filter_lines": json.dumps(filter_lines)
+        })
 
 
-def why_crap(descr, url, filter_file):
+def why_crap(descr, url, filter_lines):
     """
     Filters HN stories.
     """
     # suck in filter words
     patterns = []
     section = ""
-    for line in fileinput.input(filter_file):
+    for line in filter_lines:
         line = line.strip()
         # skip blank lines
         if len(line) < 3:

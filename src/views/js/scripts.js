@@ -9,10 +9,17 @@ function reload() {
       type: "GET",
       success: function(response) {
         if (response.logged_in) {
-          $("#login-btn").text(response.email);
-          $("#login-btn").removeAttr("onclick");
-          $("#login-btn").attr("onclick", "doLogout()");
+          $("#login-dd").text(response.email);
+          $("#dd-itm-login").hide();
+          $("#dd-itm-register").hide();
+          $("#dd-itm-edit").show();
+          $("#dd-itm-logout").show();
         } else {
+          $("#login-dd").text("Not logged in");
+          $("#dd-itm-login").show();
+          $("#dd-itm-register").show();
+          $("#dd-itm-edit").hide();
+          $("#dd-itm-logout").hide();
         }
       },
       error: function(xhr, status, error) {
@@ -21,7 +28,8 @@ function reload() {
     });
 
     var numPages = $("#num-pages").val();
-    var ws_url = "ws://" + hostname + ":" + port + "/ws/" + numPages;
+    const site = $("#news-site").val();
+    var ws_url = "ws://" + hostname + ":" + port + "/ws/" + site + "/" + numPages;
 
     var socket = new WebSocket(ws_url);
     console.log("WebSocket connection opened: " + ws_url);
@@ -178,7 +186,7 @@ function editFilter(url) {
   })
 }
 
-function registerForm() {
+function doRegister() {
   $("#repeat-password").show();
   $("#register-btn").hide();
   $("#form-login-btn").text("Register");
@@ -186,6 +194,8 @@ function registerForm() {
   $("#form-login-btn").attr("onclick", "register()");
   $("#inputPassword").off("keyup").on("keyup", matchPasswords);
   $("#repeatPassword").off("keyup").on("keyup", matchPasswords);
+
+  $("#loginModal").modal("show");
 }
 
 function register() {
@@ -221,9 +231,12 @@ function login() {
       if (response.success) {
         $('#loginModal').modal("hide");
         // load edit filter here
-        $("#login-btn").text(email);
-        $("#login-btn").removeAttr("onclick");
-        $("#login-btn").attr("onclick", "doLogout()");
+        $("#login-dd").text(response.email);
+        $("#dd-itm-login").hide();
+        $("#dd-itm-register").hide();
+        $("#dd-itm-edit").show();
+        $("#dd-itm-logout").show();
+
         const toast = new bootstrap.Toast($('#saveToast'));
         $("#toast-text").text(email + " logged in");
         toast.show();
@@ -270,9 +283,12 @@ function doLogout() {
       type: "GET",
       success: function(response) {
         if (!response.logged_in) {
-          $("#login-btn").text("Login");
-          $("#login-btn").removeAttr("onclick");
-          $("#login-btn").attr("onclick", "doLogin()");
+          $("#login-dd").text("Not logged in");
+          $("#dd-itm-login").show();
+          $("#dd-itm-register").show();
+          $("#dd-itm-edit").hide();
+          $("#dd-itm-logout").hide();
+
           const toast = new bootstrap.Toast($('#saveToast'));
           $("#toast-text").text("Logged out");
           toast.show();
@@ -286,5 +302,13 @@ function doLogout() {
 }
 
 function doLogin() {
+  $("#repeat-password").hide();
+  $("#register-btn").show();
+  $("#form-login-btn").text("Login");
+  $("#loginModalLabel").text("Login");
+  $("#form-login-btn").attr("onclick", "login()");
+  $("#inputPassword").off("keyup");
+  $("#repeatPassword").off("keyup");
+
   $("#loginModal").modal("show");
 }

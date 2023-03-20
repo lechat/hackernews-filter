@@ -1,3 +1,13 @@
+Aleksey's Hacker News/Lobsters Crap Filter
+==
+
+This is heavily reworked fork of Derek's Hackernews Crap Filter (see below)
+
+I host it on my home server and have no plans to release it as a standalone website.
+
+This code reads HN/Lobsters regularly and stores articles in redis. Then main app
+reads it from redis and applies filter.
+
 Derek's Hackernews Crap Filter
 ==
 

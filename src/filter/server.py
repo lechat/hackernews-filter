@@ -3,6 +3,7 @@ import os
 import json
 import sys
 import logging
+from functools import wraps
 
 import click
 import bottle
@@ -15,14 +16,16 @@ from geventwebsocket import WebSocketError
 from bottle_login import LoginPlugin
 
 from hn_filter_core import (
-    get_stories, filter_stories, get_filter, find_user,
-    register_user, save_filter_file, why_crap
+    get_hn_stories, get_lob_stories, filter_stories, find_user,
+    register_user, update_filter, why_crap
 )
+import redis_pool
 
 
 CONFIG_PATH = "./"
-DEFAULT_FILTER_FILE = "filter.txt"
+DEFAULT_FILTER_LINES = "filter.txt"
 USER_FILE = "users.json"
+REDIS_POOL = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,28 +51,35 @@ app.pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 login = app.install(LoginPlugin())
 
 
+def json_response(route_func):
+    @wraps(route_func)
+    def wrapper(*args, **kwargs):
+        bottle.response.content_type = 'application/json'
+        return route_func(*args, **kwargs)
+    return wrapper
+
+
 @login.load_user
 def load_user(user_id):
-    return find_user(user_id, USER_FILE)
+    return find_user(user_id)
 
 
-def filter_file_name():
+def user_filter():
     user = login.get_user()
     if user:
-        return user["filter_file"]
+        return user["filter_lines"]
 
-    return DEFAULT_FILTER_FILE
+    return DEFAULT_FILTER_LINES
 
 
 @app.route("/")
 def index():
-    log.info("Requested /")
     bottle.response.headers["Content-Type"] = "text/html"
     return bottle.static_file("home_ws.html", root="src/views")
 
 
-@app.route("/ws/<num_pages>")
-def data_processing(num_pages):
+@app.route("/ws/<site>/<num_pages>")
+def data_processing(site, num_pages):
     log.info(f"num pages: {num_pages}")
     wsock = bottle.request.environ.get("wsgi.websocket")
     if not wsock:
@@ -77,13 +87,17 @@ def data_processing(num_pages):
     try:
         stories = []
         # Send progress updates until the data is ready
-        for page in range(1, int(num_pages) + 1):
+        for page in range(0, int(num_pages)):
             log.info(f"Reading page {page}")
-            page_stories = get_stories(page)
+            if site == "hn":
+                page_stories = get_hn_stories(page)
+            else:
+                page_stories = get_lob_stories(page)
+
             stories.extend(page_stories)
             wsock.send(json.dumps({"type": "progress", "data": page}))
 
-        data = filter_stories(stories, filter_file_name())
+        data = filter_stories(stories, user_filter())
 
         wsock.send(json.dumps({"type": "data", "data": data}))
 
@@ -92,28 +106,29 @@ def data_processing(num_pages):
 
 
 @app.route("/editcrap")
+@json_response
 def edit_crap():
-    bottle.response.headers["Content-Type"] = "application/json"
-
-    return {"filter": get_filter(filter_file_name())}
+    return {"filter": "".join(user_filter())}
 
 
 @app.route("/savecrap", method="POST")
+@json_response
 def save_filter():
-    bottle.response.headers["Content-Type"] = "application/json"
     filter_lines = bottle.request.forms.get("filter_lines")
 
-    save_filter_file(filter_file_name(), filter_lines)
+    update_filter(login.get_user(), [
+        x + "\n" for x in filter_lines.split("\n")
+    ])
     return {"success": True}
 
 
 @app.route("/showwhy", method="POST")
+@json_response
 def show_why():
     descr = bottle.request.forms.get("story")
     url = bottle.request.forms.get("url")
 
-    why = why_crap(descr, url, filter_file_name())
-    bottle.response.headers["Content-Type"] = "application/json"
+    why = why_crap(descr, url, user_filter())
     return {"why": why}
 
 
@@ -143,6 +158,7 @@ def favicon():
 
 
 @app.route("/check_login_status")
+@json_response
 def check_login_status():
     user = login.get_user()
     if user:
@@ -150,32 +166,31 @@ def check_login_status():
     else:
         data = {"logged_in": False, "email": ""}
 
-    bottle.response.headers["Content-Type"] = "application/json"
     return data
 
 
 @app.route("/register", method="POST")
+@json_response
 def do_register():
     user_id = bottle.request.forms.get("email")
     pw = bottle.request.forms.get("pass")
     hashed_pw = app.pwd_context.hash(pw)
 
     register_user(
-        user_id, hashed_pw, USER_FILE, DEFAULT_FILTER_FILE, CONFIG_PATH
+        user_id, hashed_pw, DEFAULT_FILTER_LINES
     )
     login.login_user(user_id)
 
-    bottle.response.headers["Content-Type"] = "application/json"
     return {"success": True}
 
 
 @app.route("/login", method="POST")
+@json_response
 def do_login():
     user_id = bottle.request.forms.get("email")
     pw = bottle.request.forms.get("pass")
-    bottle.response.headers["Content-Type"] = "application/json"
 
-    reg_user = find_user(user_id, USER_FILE)
+    reg_user = find_user(user_id)
     if reg_user:
         if app.pwd_context.verify(pw, reg_user["password"]):
             login.login_user(user_id)
@@ -185,35 +200,54 @@ def do_login():
 
 
 @app.route("/logout")
+@json_response
 def do_logout():
     login.logout_user()
-    bottle.response.headers["Content-Type"] = "application/json"
 
     return {"success": True}
 
 
 @click.command()
 @click.option(
+    "--port",
+    default=os.environ.get("APP_PORT", "31337"),
+    help="File path for filter.txt and user.json files",
+)
+@click.option(
     "--configpath",
     type=click.Path(exists=True),
     default=CONFIG_PATH,
     help="File path for filter.txt and user.json files",
 )
-def main(configpath):
-    app_port = os.environ.get("APP_PORT", "31337")
+@click.option(
+    "--redishost",
+    default=os.environ.get("REDIS_HOST", "localhost"),
+    help="Redis host",
+)
+@click.option(
+    "--redisport",
+    default=os.environ.get("REDIS_PORT", "6379"),
+    help="Redis port",
+)
+def main(port, configpath, redishost, redisport):
     global CONFIG_PATH
-    global DEFAULT_FILTER_FILE
+    global DEFAULT_FILTER_LINES
     global USER_FILE
+    global REDIS_POOL
 
     CONFIG_PATH = configpath
-    DEFAULT_FILTER_FILE = os.path.join(configpath, "filter.txt")
+
+    with open(os.path.join(configpath, "filter.txt"), "r") as df:
+        DEFAULT_FILTER_LINES = df.readlines()
+
     USER_FILE = os.path.join(configpath, "users.json")
 
-    log.info(f"Listening on {app_port}. Config path is {configpath}")
+    REDIS_POOL = redis_pool.RedisPool(host=redishost, port=redisport)
 
-    app.debug = True
+    log.info(f"Listening on {port}. Config path is {configpath}")
+
     server = pywsgi.WSGIServer(
-        ("0.0.0.0", int(app_port)),
+        ("0.0.0.0", int(port)),
         app,
         handler_class=WebSocketHandler,
         log=pywsgi._NoopLog(),
