@@ -118,6 +118,9 @@ function editCrap(url) {
         $("#urlhelp").text(url);
         $("#urlhelp").show();
       }
+      const converted = url.replace(/\./g, "\\.").replace(/^|$/g, "(?i).*");
+      response.filter += "\n" + converted;
+
       $('#filter-text').val(response.filter);
       $('#filterModal').modal('show');
     },
